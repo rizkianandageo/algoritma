@@ -1,7 +1,6 @@
 // =========================================================
 // API.JS - MENGHUBUNGKAN FRONTEND DENGAN DATABASE (BACKEND)
 // =========================================================
-
 // --- TAMENG ANTI-CRASH: Memastikan output selalu berupa Array ---
 async function fetchSafe(url) {
     try {
@@ -21,15 +20,13 @@ async function fetchPointData() {
         return { type: 'FeatureCollection', features: [] };
     }
     try {
-        const params = new URLSearchParams();
-        if (currentFilters.year[0] !== 'All') params.append('year', currentFilters.year.join(','));
-        else params.append('year', 'All');
-        if (currentFilters.month[0] !== 'All') params.append('month', currentFilters.month.join(','));
-        else params.append('month', 'All');
-        params.append('mode', currentMode);
-
-        const data = await fetchSafe(`${BASE_URL}/points-data?${params.toString()}`);
+        const fileName = currentMode === 'risk' ? 'api_points_risk.json' : 'api_points_traffic.json';
+        const data = await fetchSafe(`${BASE_URL}/${fileName}`);
         
+        // --- FILTER MANUAL DI FRONTEND (Karena tidak ada backend yang memfilter) ---
+        const activeYearFilters = currentFilters.year[0] === 'All' ? [] : currentFilters.year.map(Number);
+        const activeMonthFilters = currentFilters.month[0] === 'All' ? [] : currentFilters.month.map(Number);
+
         const features = data
             .filter(row => {
                 const isActive = row.status && row.status.toUpperCase() === 'ACTIVE';
@@ -39,7 +36,12 @@ async function fetchPointData() {
                 const lng = parseFloat(strLng);
                 const isValidLat = !isNaN(lat) && lat >= -90 && lat <= 90 && lat !== 0;
                 const isValidLng = !isNaN(lng) && lng >= -180 && lng <= 180 && lng !== 0;
-                return isActive && isValidLat && isValidLng;
+                
+                // (Tambahan) Filter berdasarkan Tahun & Bulan dari UI
+                let isYearMatch = activeYearFilters.length === 0 || (row.tanggal && activeYearFilters.includes(new Date(row.tanggal).getFullYear()));
+                let isMonthMatch = activeMonthFilters.length === 0 || (row.tanggal && activeMonthFilters.includes(new Date(row.tanggal).getMonth() + 1));
+
+                return isActive && isValidLat && isValidLng && isYearMatch && isMonthMatch;
             })
             .map(row => {
                 return {
@@ -58,13 +60,13 @@ let globalTrendCache = { keamanan: [], keselamatan: [], ketertiban: [], kelancar
 async function preloadAllData() {
     try {
         console.log("🚀 Memuat semua data analitik ke memori...");
-        // Download 5 Mode Sekaligus!
+        // Download 5 Mode Sekaligus dari File JSON Lokal!
         const [dataKeamanan, dataTraffic, dataKeselamatan, dataKetertiban, dataKelancaran] = await Promise.all([
-            fetchSafe(`${BASE_URL}/trend-data?mode=risk`),
-            fetchSafe(`${BASE_URL}/trend-data?mode=traffic`), // [TAMBAHKAN INI]
-            fetchSafe(`${BASE_URL}/trend-data?mode=fatality`),
-            fetchSafe(`${BASE_URL}/trend-data?mode=ketertiban`),
-            fetchSafe(`${BASE_URL}/trend-data?mode=kelancaran`)
+            fetchSafe(`${BASE_URL}/api_trend_risk.json`),
+            fetchSafe(`${BASE_URL}/api_trend_traffic.json`), 
+            fetchSafe(`${BASE_URL}/api_trend_fatality.json`),
+            fetchSafe(`${BASE_URL}/api_trend_ketertiban.json`),
+            fetchSafe(`${BASE_URL}/api_trend_kelancaran.json`)
         ]);
 
         const processMap = (row) => {
@@ -98,27 +100,23 @@ function getCurrentTrendData() {
 }
 
 // Gunakan fetchSafe agar tidak crash jika database mati
-async function fetchPopulationData() { return await fetchSafe(`${BASE_URL}/population-data`); }
-async function fetchVehicleData() { return await fetchSafe(`${BASE_URL}/vehicle-data`); }
-async function fetchDriverData() { return await fetchSafe(`${BASE_URL}/driver-data`); }
+// [GANTI URL FETCH MENJADI NAMA FILE LOKAL]
+async function fetchPopulationData() { return await fetchSafe(`${BASE_URL}/api_population.json`); }
+async function fetchVehicleData() { return await fetchSafe(`${BASE_URL}/api_vehicle.json`); }
+async function fetchDriverData() { return await fetchSafe(`${BASE_URL}/api_driver.json`); }
 
 async function fetchRiskData(year, month, poldas, polres) {
-    try {
-        if (currentMode !== 'risk' && currentMode !== 'traffic') return []; 
-        const queryParams = new URLSearchParams({
-            year: year.join(','), month: month.join(','),
-            poldas: poldas.join(','), polres: polres.join(','), mode: currentMode 
-        });
-        return await fetchSafe(`${BASE_URL}/risk-data?${queryParams}`);
-    } catch (error) { return []; }
+    // Fungsi ini sebenarnya sudah TIDAK DIPAKAI LAGI sejak kita menggunakan sistem Cache Memori (preloadAllData)
+    // Namun untuk mencegah error jika terpanggil, kita buat mengembalikan array kosong.
+    return []; 
 }
 
 async function initFilters() {
     try {
-        const response = await fetch(`${BASE_URL}/options?mode=${currentMode}`);
+        const response = await fetch(`${BASE_URL}/api_options.json`);
         if(!response.ok) {
-            console.warn("⚠️ API Options Database Offline. Memuat UI Kosong.");
-            return; // Berhenti dengan anggun, jangan crash
+            console.warn("⚠️ Data Opsi Statis tidak ditemukan. Memuat UI Kosong.");
+            return;
         }
         const data = await response.json();
 

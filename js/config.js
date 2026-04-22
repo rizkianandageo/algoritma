@@ -1,7 +1,7 @@
 // ==========================================
 // 1. KONSTANTA GLOBAL
 // ==========================================
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = './data';
 
 const SPECIAL_POLRES_NAMES = ['DITLANTAS', 'POLRES'];
 

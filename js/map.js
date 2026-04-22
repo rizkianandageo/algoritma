@@ -495,15 +495,31 @@ async function updateDashboardData() {
 
         // --- JALUR NORMAL KINERJA KEAMANAN ---
         let data = [];
-        try {
-            const response = await fetch(`${BASE_URL}/risk-data?${params.toString()}`);
-            if (response.ok) {
-                const json = await response.json();
-                data = Array.isArray(json) ? json : [];
-            }
-        } catch(e) { console.warn("⚠️ API Risk-Data Offline", e); }
+        
+        // [PERBAIKAN SERVERLESS]: Kita buat agregasi data secara mandiri dari memori (rawTrendData)
+        // Tanpa perlu memanggil server backend sama sekali!
+        let manualGroupedData = {};
+        let activeYearStr = currentFilters.year[0];
+        let isMonthAll = currentFilters.month[0] === 'All';
 
-        currentDataMap = {}; globalMaxRisk = 0; grandTotalPoints = 0; let tableAggregations = {}; 
+        if (rawTrendData && rawTrendData.length > 0) {
+            rawTrendData.forEach(row => {
+                let y = row._year !== undefined ? row._year : new Date(row.tanggal).getFullYear();
+                if (isNaN(y) || (activeYearStr !== 'All' && y !== parseInt(activeYearStr))) return;
+                
+                let m = row._month !== undefined ? row._month : (new Date(row.tanggal).getMonth() + 1).toString();
+                if (!isMonthAll && !currentFilters.month.includes(m)) return;
+
+                let key = row.polda + "_" + row.polres;
+                if (!manualGroupedData[key]) {
+                    manualGroupedData[key] = { polda: row.polda, polres: row.polres, total_value: 0 };
+                }
+                manualGroupedData[key].total_value += row.value_amount;
+            });
+            data = Object.values(manualGroupedData);
+        }
+
+        currentDataMap = {}; globalMaxRisk = 0; grandTotalPoints = 0; let tableAggregations = {};
         
         // [PERBAIKAN KUNCI 3]: Daftarkan semua Polres dengan risiko 0
         for (let uniqueKey in geoPropertiesLookup) {
