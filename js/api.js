@@ -20,13 +20,15 @@ async function fetchPointData() {
         return { type: 'FeatureCollection', features: [] };
     }
     try {
+        // 1. Tentukan nama file statis berdasarkan mode
         const fileName = currentMode === 'risk' ? 'api_points_risk.json' : 'api_points_traffic.json';
-        const data = await fetchSafe(`${BASE_URL}/${fileName}`);
-        
-        // --- FILTER MANUAL DI FRONTEND (Karena tidak ada backend yang memfilter) ---
-        const activeYearFilters = currentFilters.year[0] === 'All' ? [] : currentFilters.year.map(Number);
-        const activeMonthFilters = currentFilters.month[0] === 'All' ? [] : currentFilters.month.map(Number);
 
+        // 2. Fetch langsung ke file JSON di dalam folder data
+        const data = await fetchSafe(`./data/${fileName}`);
+
+        if (!data || data.length === 0) return { type: 'FeatureCollection', features: [] };
+
+        // 3. Ubah format JSON mentah menjadi format GeoJSON yang dipahami Peta
         const features = data
             .filter(row => {
                 const isActive = row.status && row.status.toUpperCase() === 'ACTIVE';
@@ -37,22 +39,24 @@ async function fetchPointData() {
                 const isValidLat = !isNaN(lat) && lat >= -90 && lat <= 90 && lat !== 0;
                 const isValidLng = !isNaN(lng) && lng >= -180 && lng <= 180 && lng !== 0;
                 
-                // (Tambahan) Filter berdasarkan Tahun & Bulan dari UI
-                let isYearMatch = activeYearFilters.length === 0 || (row.tanggal && activeYearFilters.includes(new Date(row.tanggal).getFullYear()));
-                let isMonthMatch = activeMonthFilters.length === 0 || (row.tanggal && activeMonthFilters.includes(new Date(row.tanggal).getMonth() + 1));
-
-                return isActive && isValidLat && isValidLng && isYearMatch && isMonthMatch;
+                return isActive && isValidLat && isValidLng;
             })
             .map(row => {
                 return {
                     type: 'Feature',
-                    geometry: { type: 'Point', coordinates: [parseFloat(String(row.lng).replace(',', '.')), parseFloat(String(row.lat).replace(',', '.'))] },
+                    geometry: { 
+                        type: 'Point', 
+                        coordinates: [parseFloat(String(row.lng).replace(',', '.')), parseFloat(String(row.lat).replace(',', '.'))] 
+                    },
                     properties: { type: currentMode === 'risk' ? 'Blackspot' : 'Troublespot' }
                 };
             });
 
         return { type: 'FeatureCollection', features: features };
-    } catch (e) { return { type: 'FeatureCollection', features: [] }; }
+    } catch (e) { 
+        console.error("Gagal load titik:", e);
+        return { type: 'FeatureCollection', features: [] }; 
+    }
 }
 
 let globalTrendCache = { keamanan: [], keselamatan: [], ketertiban: [], kelancaran: [], traffic: [] }; // Tambah traffic
